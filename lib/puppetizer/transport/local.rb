@@ -15,6 +15,7 @@
 # limitations under the License.
 require 'net/ssh/simple'
 require 'open3'
+require 'pty'
 require 'puppetizer/puppetizer_error'
 require 'puppetizer/log'
 require 'puppetizer/busy_spinner'
@@ -52,31 +53,29 @@ module Puppetizer
         end
       end
 
-      # adapted from https://nickcharlton.net/posts/ruby-subprocesses-with-stdout-stderr-streams.html
+      # This really takes the biscuit!  Can anyone see a better way to do this
+      # locally?
       def self.ssh(ssh_params, cmd, no_print=false, no_capture=false)
-        Log::action_log(cmd)
-        require 'pty'
-        #Open3.popen2e(cmd) { |stdin, stdout_and_stderr, wait_thr|
-        PTY.spawn(cmd) { | r, w, pid|
+
+        # escape double quotes and dollars to prevent bash expansion - quotes to
+        # avoid clashing with bash -c "", $ to prevent empty variables appearing
+        # Note that we must use "" as the 'outer' quotes since bash doesn't
+        # respect \' inside single quotes!
+        cmd_quoted = cmd.strip.gsub('"','\\"').gsub('$','\\$')
+
+        # unset ruby/bundle variables to prevent failed command from using the
+        # wrong ruby, then wrap the quoted command in bash -c, otherwise shell
+        # redirection '>' and friends will fail
+        cmd_wrapped = "unset RUBYLIB GEM_HOME GEM_PATH RUBYOPT;  bash -c \"#{cmd_quoted}\""
+        Log::action_log(cmd_wrapped)
+
+        # Spawn a subshell, run the command
+        PTY.spawn(cmd_wrapped) { | r, w, pid|
           begin
             r.sync
-            # # read each stream from a new thread
-            # puts stdout.gets
-            # puts stderr.gets
-            # { :out => stdout, :err => stderr }.each do |key, stream|
-            #   Thread.new do
-            #     until (raw_line = stream.gets).nil? do
-            #       puts "**** #{raw_line}"
-            #       defrag_line(raw_line,stdin,no_print, ssh_params)
-            #     end
-            #   end
-            # end
             r.each_line { |line|
               process_line(line,w,no_print, ssh_params)
             }
-          # thread.join # don't exit until the external process is done
-          #exit_status = .value
-
           rescue Errno::EIO => e
             raise PuppetizerError, "Command failed mid-stream"
           end
@@ -88,14 +87,6 @@ module Puppetizer
           raise PuppetizerError, "Command failed!"
         end
 
-        # rescue Net::SSH::Simple::Error => e
-        #   if e.message =~ /AuthenticationFailed/
-        #     error_message = "Authentication failed for #{ssh_opts[:user]}@#{host}, key loaded?"
-        #   else
-        #     error_message = e.message
-        #   end
-        #   raise PuppetizerError, error_message
-        # end
       end
 
       def self.process_line(d, channel, no_print, ssh_params)
