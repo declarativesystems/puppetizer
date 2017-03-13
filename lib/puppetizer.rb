@@ -29,6 +29,8 @@ require 'time'
 require 'puppetizer'
 require 'puppetizer/alt_installer'
 require 'puppetizer/transport'
+require 'puppetizer/transport/secure_shell'
+require 'puppetizer/transport/local'
 require 'puppetizer/util'
 require 'puppetizer/log'
 require 'puppetizer/puppetizer_error'
@@ -70,20 +72,29 @@ module Puppetizer
   class Puppetizer < ::Escort::ActionCommand::Base
 
     def initialize(options, arguments)
-      @options = options
-      @arguments = arguments
-      @ssh_username = @options[:global][:options][:ssh_username]
-      @reinstall = @options[:global][:options][:reinstall]
-      @authenticator = Authenticator.new(
+      @options        = options
+      @arguments      = arguments
+      @ssh_username   = @options[:global][:options][:ssh_username]
+      @reinstall      = @options[:global][:options][:reinstall]
+      @local          = @options[:global][:options][:local]
+      @authenticator  = Authenticator.new(
         @options[:global][:options][:password_file], @ssh_username
       )
 
-      if File.exists?(INVENTORY_FILE)
-        @myini = IniStyle.new('inventory/hosts')
+      if @local
+        @transport = Transport::Local
+        @myini = {
+          "puppetmasters" => [ "localhost"]
+        }
       else
-        raise Escort::UserError.new("Inventory file not found at #{INVENTORY_FILE}")
-      end
+        @transport = Transport::SecureShell
 
+        if File.exists?(INVENTORY_FILE)
+          @myini = IniStyle.new('inventory/hosts')
+        else
+          raise Escort::UserError.new("Inventory file not found at #{INVENTORY_FILE}")
+        end
+      end
       # split the only_hosts list by on commas if present
       if @options[:global][:options][:only_hosts] == nil or
             @options[:global][:options][:only_hosts].empty?
@@ -91,6 +102,8 @@ module Puppetizer
       else
         @only_hosts = @options[:global][:options][:only_hosts].downcase.split(',')
       end
+
+
     end
 
     def setup_csr_attributes(ssh_params, csr_attributes, data)
@@ -104,8 +117,8 @@ module Puppetizer
           f << ERB.new(Util::resource_read(CSR_ATTRIBUTES_TEMPLATE), nil, '-').result(binding)
           f.close
           csr_tmp = "/tmp/csr_attributes.yaml"
-          Transport::scp(ssh_params, f.path, csr_tmp)
-          Transport::ssh(ssh_params,
+          @transport::scp(ssh_params, f.path, csr_tmp)
+          @transport::ssh(ssh_params,
             ERB.new(Util::resource_read(MV_CSR_ATTRIBUTES_TEMPLATE), nil, '-').result(binding))
         ensure
           f.close
@@ -139,7 +152,7 @@ module Puppetizer
       if @options[:global][:commands][:agents][:options][:alt_installer]
         AltInstaller::install_puppet(ssh_params, puppetmaster, data)
       else
-        Transport::ssh(ssh_params, ERB.new(Util::resource_read(INSTALL_PUPPET_TEMPLATE), nil, '-').result(binding))
+        @transport::ssh(ssh_params, ERB.new(Util::resource_read(INSTALL_PUPPET_TEMPLATE), nil, '-').result(binding))
       end
 
       InstallState::mark_installed(hostname)
@@ -161,11 +174,11 @@ module Puppetizer
       user_start, user_end = ssh_params.get_swap_user()
       if Dir.exists?(AGENT_LOCAL_PATH)
         # make sure the final location exists on puppet master
-        Transport::ssh(ssh_params, "#{user_start} mkdir -p #{AGENT_UPLOAD_PATH_NORMAL} #{AGENT_UPLOAD_PATH_WINDOWS_X86} #{AGENT_UPLOAD_PATH_WINDOWS_X64} #{user_end}")
+        @transport::ssh(ssh_params, "#{user_start} mkdir -p #{AGENT_UPLOAD_PATH_NORMAL} #{AGENT_UPLOAD_PATH_WINDOWS_X86} #{AGENT_UPLOAD_PATH_WINDOWS_X64} #{user_end}")
         Dir.foreach(AGENT_LOCAL_PATH) { |f|
           if f != '.' and f != '..'
             filename = AGENT_LOCAL_PATH + File::SEPARATOR + f
-            Transport::scp(ssh_params, filename, "/tmp/#{f}", "Uploading #{f}")
+            @transport::scp(ssh_params, filename, "/tmp/#{f}", "Uploading #{f}")
 
             if f =~ /.msi/
               if f =~ /x86/
@@ -176,7 +189,7 @@ module Puppetizer
             else
               final_destination = AGENT_UPLOAD_PATH_NORMAL
             end
-            Transport::ssh(ssh_params, "#{user_start} cp /tmp/#{f} #{final_destination} #{user_end}")
+            @transport::ssh(ssh_params, "#{user_start} cp /tmp/#{f} #{final_destination} #{user_end}")
           end
         }
       end
@@ -190,17 +203,17 @@ module Puppetizer
       install_needed = false
       local_cache = GEM_LOCAL_PATH + File::SEPARATOR + 'cache'
       if Dir.exists?(local_cache)
-        Transport::ssh(ssh_params, "mkdir -p #{gem_cache_dir}")
+        @transport::ssh(ssh_params, "mkdir -p #{gem_cache_dir}")
         Dir.foreach(local_cache) { |f|
           if f != '.' and f != '..'
             filename = local_cache + File::SEPARATOR + f
-            Transport::scp(ssh_params, filename, gem_cache_dir + f, "Uploading " + f)
+            @transport::scp(ssh_params, filename, gem_cache_dir + f, "Uploading " + f)
             install_needed = true
           end
         }
 
         if install_needed
-          Transport::ssh(ssh_params, ERB.new(Util::resource_read(OFFLINE_GEM_TEMPLATE), nil, '-').result(binding))
+          @transport::ssh(ssh_params, ERB.new(Util::resource_read(OFFLINE_GEM_TEMPLATE), nil, '-').result(binding))
         end
       end
     end
@@ -210,7 +223,7 @@ module Puppetizer
 
       Escort::Logger.output.puts message
       Log::action_log("# --- begin run command on #{ssh_params.get_hostname()} ---")
-      Transport::ssh(ssh_params, "#{user_start} /opt/puppetlabs/bin/puppet agent -t #{user_end}")
+      @transport::ssh(ssh_params, "#{user_start} /opt/puppetlabs/bin/puppet agent -t #{user_end}")
       Log::action_log("# --- end run command on #{ssh_params.get_hostname()} ---")
       Escort::Logger.output.puts "...done!"
     end
@@ -294,18 +307,18 @@ module Puppetizer
       # run the PE installer
       if compile_master
         # create an external fact with the address of the load balancer on the host
-        Transport::ssh(ssh_params,
+        @transport::ssh(ssh_params,
           ERB.new(Util::resource_read(LB_EXTERNAL_FACT_TEMPLATE), nil, '-').result(binding))
 
         # install puppet agent as a CM
-        Transport::ssh(ssh_params,
+        @transport::ssh(ssh_params,
           ERB.new(Util::resource_read(INSTALL_CM_TEMPLATE), nil, '-').result(binding))
 
         # sign the cert on the mom
         Escort::Logger.output.puts "Waiting 5 seconds for CSR to arrive on MOM"
         sleep(5)
         Log::action_log("# --- begin run command on #{mom} ---")
-        Transport::ssh(ssh_params_mom,
+        @transport::ssh(ssh_params_mom,
           ERB.new(Util::resource_read(SIGN_CM_CERT_TEMPLATE), nil, '-').result(binding))
         Log::action_log("# --- end run command on #{mom} ---")
 
@@ -314,14 +327,14 @@ module Puppetizer
         script_path = "/tmp/#{File.basename(CLASSIFY_CM_SCRIPT)}"
 
         Log::action_log("# --- begin copy file to #{mom} ---")
-        Transport::scp(ssh_params_mom, Util::resource_path(CLASSIFY_CM_SCRIPT), script_path)
+        @transport::scp(ssh_params_mom, Util::resource_path(CLASSIFY_CM_SCRIPT), script_path)
         Log::action_log("# --- end copy file to #{mom} ---")
 
         # pin the CM to the PE Masters group and set a load balancer address for
         # pe_repo (if provided)
         Log::action_log("# --- begin run command on #{mom} ---")
-        Transport::ssh(ssh_params_mom, "chmod +x #{script_path}")
-        Transport::ssh(ssh_params_mom, "#{user_start} #{script_path} #{hostname} #{lb_fact} #{user_end}")
+        @transport::ssh(ssh_params_mom, "chmod +x #{script_path}")
+        @transport::ssh(ssh_params_mom, "#{user_start} #{script_path} #{hostname} #{lb_fact} #{user_end}")
         Log::action_log("# --- end run command on #{mom} ---")
 
         # Run puppet in the correct order
@@ -332,27 +345,27 @@ module Puppetizer
 
         # SCP the installer
         tarball = find_pe_tarball
-        Transport::scp(ssh_params, tarball, "/tmp/#{tarball}", "Upload PE Media")
+        @transport::scp(ssh_params, tarball, "/tmp/#{tarball}", "Upload PE Media")
 
         # copy r10k private key if needed
         if r10k_private_key_path
 
           # upload to /tmp
           temp_keyfile = "/tmp/#{File.basename(PUPPET_R10K_KEY)}"
-          Transport::scp(ssh_params, r10k_private_key_path, temp_keyfile)
+          @transport::scp(ssh_params, r10k_private_key_path, temp_keyfile)
 
           # make directory and move temp keyfile there
-          Transport::ssh(ssh_params, "#{user_start} mkdir -p #{PUPPET_R10K_SSH} #{user_end}")
-          Transport::ssh(ssh_params, "#{user_start} mv #{temp_keyfile} #{PUPPET_R10K_KEY} #{user_end}")
+          @transport::ssh(ssh_params, "#{user_start} mkdir -p #{PUPPET_R10K_SSH} #{user_end}")
+          @transport::ssh(ssh_params, "#{user_start} mv #{temp_keyfile} #{PUPPET_R10K_KEY} #{user_end}")
         end
 
         # run installation
-        Transport::ssh(ssh_params, ERB.new(Util::resource_read(INSTALL_PE_MASTER_TEMPLATE), nil, '-').result(binding))
+        @transport::ssh(ssh_params, ERB.new(Util::resource_read(INSTALL_PE_MASTER_TEMPLATE), nil, '-').result(binding))
 
         # fix permissions on key
         if r10k_private_key_path
-          Transport::ssh(ssh_params, "#{user_start} chown pe-puppet.pe-puppet #{PUPPET_R10K_KEY} #{user_end}")
-          Transport::ssh(ssh_params, "#{user_start} chmod 600 #{PUPPET_R10K_KEY} #{user_end}")
+          @transport::ssh(ssh_params, "#{user_start} chown pe-puppet.pe-puppet #{PUPPET_R10K_KEY} #{user_end}")
+          @transport::ssh(ssh_params, "#{user_start} chmod 600 #{PUPPET_R10K_KEY} #{user_end}")
         end
       end
 
@@ -361,7 +374,7 @@ module Puppetizer
       upload_offline_gems(hostname)
 
       # post-install (gems) after we have uploaded any offline gems
-      Transport::ssh(ssh_params,
+      @transport::ssh(ssh_params,
         ERB.new(Util::resource_read(PE_POSTINSTALL_TEMPLATE), nil, '-').result(binding))
 
       # run puppet to finalise configuration
@@ -470,7 +483,7 @@ module Puppetizer
 
       begin
         print "host #{hostname} status: "
-        Transport::ssh(ssh_params,
+        @transport::ssh(ssh_params,
           ERB.new(Util::resource_read(PUPPET_STATUS_TEMPLATE), nil, '-').result(binding))
       rescue PuppetizerError => e
         Escort::Logger.error.error e.message
@@ -543,5 +556,8 @@ module Puppetizer
       end
     end
 
+    def classify()
+      puts "hello"
+    end
   end
 end

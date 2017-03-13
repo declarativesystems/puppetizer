@@ -52,6 +52,14 @@ Escort::App.create do |app|
         :type     => :boolean,
         :default  => false,
       )
+
+      opts.opt(:local,
+        'Perform all operations locally instead of over SSH',
+        :long     => '--local',
+        :type     => :boolean,
+        :default  => false,
+      )
+
 #
 #    opts.opt :console_admin_password,
 #      'Initial console admin password',
@@ -175,7 +183,11 @@ Escort::App.create do |app|
     end
   end
 
-  # Example of how to trigger a default action
-  # app.action do |options, arguments|
-  # end
+  app.command :classify do |command|
+    command.summary "Setup classification rules"
+    command.description "Add or update classification rules on the MOM"
+    command.action do |options, arguments|
+      Puppetizer::Puppetizer.new(options, arguments).classify()
+    end
+  end
 end

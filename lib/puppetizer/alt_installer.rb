@@ -16,13 +16,16 @@
 require 'puppetizer'
 require 'puppetizer/util'
 require 'puppetizer/transport'
+require 'puppetizer/transport/secure_shell'
 require 'puppetizer/alt_installer'
 require 'escort'
 require 'erb'
 
 module Puppetizer
   module AltInstaller
-    Transport = Puppetizer::Transport
+
+    # Alt installer just works on SSH for now
+    Transport = Puppetizer::Transport::SecureShell
     Util = Puppetizer::Util
 
     AGENT_CACHE                 = "./agent_repos_cache"
