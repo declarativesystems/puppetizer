@@ -69,24 +69,23 @@ module Puppetizer
         cmd_wrapped = "unset RUBYLIB GEM_HOME GEM_PATH RUBYOPT;  bash -c \"#{cmd_quoted}\""
         Log::action_log(cmd_wrapped)
 
-        # Spawn a subshell, run the command
-        PTY.spawn(cmd_wrapped) { | r, w, pid|
-          begin
+        # run the command (PTY.spawn works but fails at the end for some reason)
+        begin
+          Open3.popen2e(cmd_wrapped) { | w, r,  wait_thr|
             r.sync
             r.each_line { |line|
               process_line(line,w,no_print, ssh_params)
             }
-          rescue Errno::EIO => e
-            raise PuppetizerError, "Command failed mid-stream"
-          end
 
-        }
-        if $?.exitstatus == 0
-          Escort::Logger.output.puts "Command executed OK"
-        else
-          raise PuppetizerError, "Command failed!"
+            if wait_thr.value.exitstatus == 0
+              Escort::Logger.output.puts "Command executed OK"
+            else
+              raise PuppetizerError, "Command failed!"
+            end
+          }
+        rescue Errno::ENOENT => e
+          raise PuppetizerError, "Command missing or file not found: #{cmd_wrapped}"
         end
-
       end
 
       def self.process_line(d, channel, no_print, ssh_params)
