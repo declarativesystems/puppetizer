@@ -281,7 +281,8 @@ module Puppetizer
       if data.has_key?('deploy_code') and data['deploy_code'] == "true"
         deploy_code = true
       else
-        deploy_code = false
+        # if control repo set, deploy code
+        deploy_code =  @options[:global][:commands][command_context[0]][:options][:control_repo] != nil
       end
 
       # use control repo supplied in inventory else command line default
