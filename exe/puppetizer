@@ -28,37 +28,38 @@ Escort::App.create do |app|
   #app.requires_arguments
 
   app.options do |opts|
-    opts.opt :ssh_username,
+    opts.opt(:ssh_username,
       'Username to use when logging in over SSH',
       :long => '--ssh-username',
       :type => :string,
       :default => 'root'
+    )
 
-      opts.opt(:only_hosts,
-        'only install process these hosts (comma delimited)',
-        :long     => '--only-hosts',
-        :type     => :string,
-      )
+    opts.opt(:only_hosts,
+      'only install process these hosts (comma delimited)',
+      :long     => '--only-hosts',
+      :type     => :string,
+    )
 
-      opts.opt(:password_file,
-        'Read CSV file of usernames and passwords, VERY INSECURE - please use SSH keys instead',
-        :long     => '--password-file',
-        :type     => :string,
-      )
+    opts.opt(:password_file,
+      'Read CSV file of usernames and passwords, VERY INSECURE - please use SSH keys instead',
+      :long     => '--password-file',
+      :type     => :string,
+    )
 
-      opts.opt(:reinstall,
-        'Force reinstallation of puppet master/agent',
-        :long     => '--reinstall',
-        :type     => :boolean,
-        :default  => false,
-      )
+    opts.opt(:reinstall,
+      'Force reinstallation of puppet master/agent',
+      :long     => '--reinstall',
+      :type     => :boolean,
+      :default  => false,
+    )
 
-      opts.opt(:local,
-        'Perform all operations locally instead of over SSH',
-        :long     => '--local',
-        :type     => :boolean,
-        :default  => false,
-      )
+    opts.opt(:local,
+      'Perform all operations locally instead of over SSH',
+      :long     => '--local',
+      :type     => :boolean,
+      :default  => false,
+    )
 
 #
 #    opts.opt :console_admin_password,

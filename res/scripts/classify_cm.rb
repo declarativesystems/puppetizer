@@ -9,10 +9,11 @@
 #
 # Optionally, you may specify a loadbalancer to use to prevent errors from
 # pe_repo:
-# 
+#
 # ./classify_cm.rb COMPILE_MASTER_FQDN LOADBALANCER_FQDN
 
 require 'puppetclassify'
+require 'escort'
 
 if ARGV.empty?
   abort("Must specify hostname to mark as a compile master")
@@ -30,13 +31,14 @@ def initialize_puppetclassify
   hostname = %x(facter fqdn).strip.downcase
   port = 4433
 
-  # Define the url to the classifier API
+  # Define the url to the classifier API - we can't just do localhost because
+  # the name has to match the SSL certificate
   rest_api_url = "https://#{hostname}:#{port}/classifier-api"
 
   # We need to authenticate against the REST API using a certificate
   # that is whitelisted in /etc/puppetlabs/console-services/rbac-certificate-whitelist.
   # (https://docs.puppetlabs.com/pe/latest/nc_forming_requests.html#authentication)
-  #  
+  #
   # Since we're doing this on the master,
   # we can just use the internal dashboard certs for authentication
   ssl_dir     = '/etc/puppetlabs/puppet/ssl'
@@ -93,7 +95,7 @@ if update_needed
   pe_master_group["rule"].push(Array.new(["=", "name", compile_master]))
 else
   puts "#{compile_master} already pinned as PE Master - no rule change needed"
-end  
+end
 
 if lb
   pe_master_group["classes"]["pe_repo"]["compile_master_pool_address"] = lb
@@ -101,13 +103,10 @@ end
 
 # Build the hash to pass to the API
 group_delta = {
-  'id'      => pe_master_group_id,
-  'rule'    => pe_master_group["rule"],
-  'classes' => pe_master_group["classes"]
+  'id'      => group_id,
+  'rule'    => group["rule"],
+  'classes' => group["classes"]
 }
-
-
-# Pass the hash to the API to assign the pe_repo::platform classes
 puppetclassify.groups.update_group(group_delta)
 
 puts "Normal exit"
