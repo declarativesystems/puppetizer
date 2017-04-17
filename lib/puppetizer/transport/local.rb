@@ -77,7 +77,15 @@ module Puppetizer
               process_line(line,w,no_print, ssh_params)
             }
 
-            if wait_thr.value.exitstatus == 0
+            if cmd =~ /puppet/
+              # if our command happens to be `puppet` then we may exit with
+              # status 2 and its not a problem..
+              good_status = [0, 2]
+            else
+              good_status = [0]
+            end
+
+            if good_status.include?(wait_thr.value.exitstatus)
               Escort::Logger.output.puts "Command executed OK"
             else
               raise PuppetizerError, "Command FAILED: #{cmd_wrapped}"
@@ -120,7 +128,9 @@ module Puppetizer
           end
         end
 
-        Escort::Logger.output.puts d.strip
+        if ! no_print
+          Escort::Logger.output.puts d.strip
+        end
       end
     end
   end
