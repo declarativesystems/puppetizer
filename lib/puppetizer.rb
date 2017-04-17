@@ -513,7 +513,7 @@ module Puppetizer
       Escort::Logger.output.puts "Setting up Code Manager on #{ssh_params.get_hostname()}"
       user_start, user_end = ssh_params.get_swap_user()
 
-      Transport::ssh(ssh_params,
+      @transport::ssh(ssh_params,
         ERB.new(Util::resource_read(SETUP_CODE_MANAGER_TEMPLATE), nil, '-').result(binding))
     end
 
