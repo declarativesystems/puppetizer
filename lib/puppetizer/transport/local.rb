@@ -80,7 +80,7 @@ module Puppetizer
             if wait_thr.value.exitstatus == 0
               Escort::Logger.output.puts "Command executed OK"
             else
-              raise PuppetizerError, "Command failed!"
+              raise PuppetizerError, "Command FAILED: #{cmd_wrapped}"
             end
           }
         rescue Errno::ENOENT => e
