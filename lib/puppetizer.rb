@@ -131,6 +131,8 @@ module Puppetizer
       message = "Installing puppet agent on #{hostname}"
       Escort::Logger.output.puts message
       Log::action_log('# ' + message)
+
+      # puppet master to use
       if @options[:global][:commands][:agents][:options][:puppetmaster]
         puppetmaster = @options[:global][:commands][:agents][:options][:puppetmaster]
       elsif data.has_key?('pm') and ! data['pm'].empty?
@@ -139,6 +141,11 @@ module Puppetizer
         raise Escort::UserError.new(
           "must specify puppetmaster address for #{hostname} in inventory file, "\
           "eg pm=xxx.megacorp.com or on the commandline with --puppetmaster")
+      end
+
+      # pp_role (set via CLI - overrides anything set in inventory file)
+      if @options[:global][:commands][command_name][:options][:pp_role]
+        data["pp_role"] = @options[:global][:commands][command_name][:options][:pp_role]
       end
 
       ssh_params = SshParams.new(hostname, @authenticator)
@@ -239,6 +246,11 @@ module Puppetizer
 
       # variables in scope for ERB
       password = @options[:global][:commands][command_name][:options][:console_admin_password]
+
+      # pp_role (set via CLI - overrides anything set in inventory file)
+      if @options[:global][:commands][command_name][:options][:pp_role]
+        data["pp_role"] = @options[:global][:commands][command_name][:options][:pp_role]
+      end
 
       # compile master installation?
       if data.has_key?('compile_master') and data['compile_master'] == "true"

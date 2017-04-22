@@ -123,6 +123,12 @@ Escort::App.create do |app|
         :default => 'https://github.com/GeoffWilliams/r10k-control/'
       )
 
+      opts.opt(:pp_role,
+        'Trusted role for this host',
+        :long     => '--pp-role',
+        :type     => :string,
+      )
+
     end
 
     command.command :agent_installers do |command|
@@ -172,6 +178,13 @@ Escort::App.create do |app|
         :type     => :boolean,
         :default  => false
       )
+
+      opts.opt(:pp_role,
+        'Trusted role for this host',
+        :long     => '--pp-role',
+        :type     => :string,
+      )
+
 
     end
   end
