@@ -125,7 +125,7 @@ Escort::App.create do |app|
 
       opts.opt(:pp_role,
         'Trusted role for this host',
-        :long     => '--pp-role',
+        :long     => '--pp_role',
         :type     => :string,
       )
 
@@ -181,7 +181,7 @@ Escort::App.create do |app|
 
       opts.opt(:pp_role,
         'Trusted role for this host',
-        :long     => '--pp-role',
+        :long     => '--pp_role',
         :type     => :string,
       )
 
